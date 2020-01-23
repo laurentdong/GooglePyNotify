@@ -1,5 +1,8 @@
 from __future__ import print_function
 import time
+import argparse
+from urllib import parse as urlparse
+import logging
 import socket
 import os.path
 import pychromecast
@@ -7,13 +10,16 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from gtts import gTTS
 
 HOST_NAME = "0.0.0.0"
-HOST_PORT = 80
-
-MP3_CACHE_DIR = "mp3_cache"
 CHROMECASTS = 0
 
+//define the default value of all the parameters
+tcp_port = 80
+device_name = ""
+lang = "en-us"
+cache_dir = "mp3_cache"
+
 class HttpServer(SimpleHTTPRequestHandler):
-            
+
     def _set_headers(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
@@ -21,28 +27,30 @@ class HttpServer(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         # Check For URL Stream "http://IPADDRESS/Notify?"
-            
         if "/Notify?" in self.path:
             self._set_headers()
-            preurl, notification = self.path.split("?")
+            parsed = urlparse.parse_qs(urlparse.urlparse(self.path).query)
+            device_name = parsed.get('device', [device_name])[0]
+            lang = parsed.get('lang', [lang])[0]
+            notification = parsed.get('message', [''])[0]
 
             # Add some error handling for chrome looping
             redir = "<html><head><meta http-equiv='refresh' content='0;url=.\' /></head><body><h1>Notification Sent! <br>"+notification+"</h1></body></html>"
             print(redir)
-
             self.wfile.write(redir.encode())
-            self.notify(str(notification))
+            if notification != "":
+                self.notify(notification)
             return
-        
+
         elif "/HelloWorld" in self.path:
             self._set_headers()
             print("Hello World Test")
             self.notify("Hello+World")
             return
-            
+
         else:
             SimpleHTTPRequestHandler.do_GET(self)
-   
+
     # POST is for submitting data
     def do_POST(self):
 
@@ -55,13 +63,13 @@ class HttpServer(SimpleHTTPRequestHandler):
     def notify(self, notification):
         if notification == "":
                 notification = "No+Notification+Data+Recieved"
-        
-        mp3 = MP3_CACHE_DIR + "/" + notification.replace("+","_") + ".mp3"
+
+        mp3 = cache_dir + "/" + ''.join(e for e in notification if e.isalnum()) + ".mp3"
         text = notification.replace("+"," ")
 
         if not os.path.isfile(mp3) :
             print("Generating MP3...")
-            tts = gTTS(text=text, lang='en-uk') # See Google TTS API for more Languages (Note: This may do translation Also - Needs Testing)
+            tts = gTTS(text=text, lang=lang) # See Google TTS API for more Languages (Note: This may do translation Also - Needs Testing)
             tts.save(mp3)
         else:
             print("Reusing MP3...")
@@ -77,24 +85,44 @@ class HttpServer(SimpleHTTPRequestHandler):
         print("Notification Sent.")
 
         return
-    
+
     def Cast(self, ip_add, mp3):
-        castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name == "Google Home")
+        # castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name == "Google Home")
+        castdevice = pychromecast.Chromecast(device_name)
         castdevice.wait()
         mediacontroller = castdevice.media_controller # ChromeCast Specific
-        url = "http://" + ip_add + "/" + mp3
+        url = "http://" + ip_add + ":" + str(tcp_port) + "/" + mp3
         print (url)
         mediacontroller.play_media(url, 'audio/mp3')
         return
 
-if not os.path.exists(MP3_CACHE_DIR):
-    os.makedirs(MP3_CACHE_DIR)
+# Process command line parameters
+parser = argparse.ArgumentParser(description="A http service to provide audio cast to ChromeCast devices")
+# [--port <TCP Port>] [--device <Device Name or IP>] [--lang <Default language>] [--cachedir <Cache Directory>]
+parser.add_argument('--port', dest='tcp_port', help='TCP Port listen on. Default = 80', type=int, required=False)
+parser.add_argument('--device', dest='device_name', help='Specify the name or IP of cast device. Default = <first finded device>', required=False)
+parser.add_argument('--lang', dest='lang', help='Specify the default language. Default = en-us', required=False)
+parser.add_argument('--cachedir', dest='cache_dir', help='Specify the cache dir used to save generated MP3 files. Default = mp3_cache', required=False)
+args = parser.parse_args()
+print(args)
+
+if not os.path.exists(cache_dir):
+    os.makedirs(cache_dir)
 
 print("Getting chromecasts...")
 CHROMECASTS = pychromecast.get_chromecasts()
+//List all the avaliable cast devices
+print([cc.device.friendly_name for cc in CHROMECASTS])
 
-print(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, HOST_PORT))
-httpServer = HTTPServer((HOST_NAME, HOST_PORT), HttpServer) #HTTP Server Stuff (Python Librarys)
+if device_name=="":         # if did not specify the device name or IP, we are going to find the first avaliable one
+    castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name in ["Google Home", "Google Home Mini", "Google Nest Mini", "Google Home Max"])
+    if castdevice is None:      # we failed to find a device
+        exit(0)
+    else:
+        device_name=castdevice.socket_client.host
+print("Default cast device:", device_name)
+print(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, tcp_port))
+httpServer = HTTPServer((HOST_NAME, tcp_port), HttpServer) #HTTP Server Stuff (Python Librarys)
 
 try:
     httpServer.serve_forever()
@@ -102,4 +130,4 @@ except KeyboardInterrupt:
     pass
 
 httpServer.server_close()
-print(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, HOST_PORT))
+print(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, tcp_port))
