@@ -2,6 +2,7 @@ from __future__ import print_function
 import time
 import argparse
 from urllib import parse as urlparse
+import sys
 import logging
 import socket
 import os.path
@@ -17,6 +18,12 @@ tcp_port = 80
 device_name = ""
 lang = "en-us"
 cache_dir = "mp3_cache"
+logname = sys.argv[0] + '.log'
+logging.basicConfig(filename=logname,
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
 
 class HttpServer(SimpleHTTPRequestHandler):
 
@@ -37,7 +44,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 
 			# Add some error handling for chrome looping
 			redir = "<html><head><meta http-equiv='refresh' content='0;url=.\' /></head><body><h1>Notification Sent! <br>"+notification+"</h1></body></html>"
-			print(redir)
+			logging.info(redir)
 			self.wfile.write(redir.encode())
 			if notification != "":
 				self.notify(notification)
@@ -45,7 +52,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 
 		elif "/HelloWorld" in self.path:
 			self._set_headers()
-			print("Hello World Test")
+			logging.info("Hello World Test")
 			self.notify("Hello+World")
 			return
 
@@ -55,7 +62,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 	# POST is for submitting data
 	def do_POST(self):
 
-		print( "incomming http: ", self.path )
+		logging.info( "incomming http: ", self.path )
 
 		content_length = int(self.headers['Content-Length']) # <--- Gets the size of data
 		post_data = self.rfile.read(content_length) # <--- Gets the data itself
@@ -69,13 +76,13 @@ class HttpServer(SimpleHTTPRequestHandler):
 		text = notification.replace("+"," ")
 
 		if not os.path.isfile(mp3) :
-			print("Generating MP3...")
+			logging.info("Generating MP3...")
 			tts = gTTS(text=text, lang=lang) # See Google TTS API for more Languages (Note: This may do translation Also - Needs Testing)
 			tts.save(mp3)
 		else:
-			print("Reusing MP3...")
+			logging.info("Reusing MP3...")
 
-		print("Sending notification...")
+		logging.info("Sending notification...")
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Pull IP Address for Local HTTP File Serving (Note: This requires an internet connection)
 		s.connect(("8.8.8.8", 80))
 		ip_add = s.getsockname()[0]
@@ -83,7 +90,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 		s.close()
 		self.Cast(ip_add, mp3)
 
-		print("Notification Sent.")
+		logging.info("Notification Sent.")
 
 		return
 
@@ -91,7 +98,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 		global tcp_port
 		# castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name == "Google Home")
 		castdevice = pychromecast.Chromecast(device_name)
-		print("Cast device:", castdevice.device.friendly_name)
+		logging.info("Cast device:", castdevice.device.friendly_name)
 		castdevice.wait()
 		mediacontroller = castdevice.media_controller # ChromeCast Specific
 		url = "http://" + ip_add + ":" + str(tcp_port) + "/" + mp3
@@ -107,7 +114,7 @@ parser.add_argument('--device', dest='device_name', help='Specify the name or IP
 parser.add_argument('--lang', dest='lang', help='Specify the default language. Default = en-us', required=False)
 parser.add_argument('--cachedir', dest='cache_dir', help='Specify the cache dir used to save generated MP3 files. Default = mp3_cache', required=False)
 args = parser.parse_args()
-print(args)
+logging.info(args)
 if args.tcp_port is not None:
 	tcp_port = args.tcp_port
 if args.device_name is not None:
@@ -120,10 +127,10 @@ if args.cache_dir is not None:
 if not os.path.exists(cache_dir):
 	os.makedirs(cache_dir)
 
-print("Getting chromecasts...")
+logging.info("Getting chromecasts...")
 CHROMECASTS = pychromecast.get_chromecasts()
 # List all the avaliable cast devices
-print([cc.device.friendly_name for cc in CHROMECASTS])
+logging.info([cc.device.friendly_name for cc in CHROMECASTS])
 
 if device_name=="":         # if did not specify the device name or IP, we are going to find the first avaliable one
 	castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name in ["Google Home", "Google Home Mini", "Google Nest Mini", "Google Home Max"])
@@ -135,8 +142,8 @@ if device_name=="":         # if did not specify the device name or IP, we are g
 		# So the returned host name will looks like: 'record[a,in-unique,6c898c16-4dc1-6575-e851-3b5d1c994e9e.local.]=120/119,192.168.1.167'
 		# Here I use a trick to retrieve the IP address from above host record
 		device_name=device_name.split(',')[-1]
-print("Default cast device:", device_name)
-print(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, tcp_port))
+logging.info("Default cast device:", device_name)
+logging.info(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, tcp_port))
 httpServer = HTTPServer((HOST_NAME, tcp_port), HttpServer) #HTTP Server Stuff (Python Librarys)
 
 try:
@@ -145,4 +152,4 @@ except KeyboardInterrupt:
 	pass
 
 httpServer.server_close()
-print(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, tcp_port))
+logging.info(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, tcp_port))
