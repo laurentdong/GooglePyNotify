@@ -62,7 +62,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 	# POST is for submitting data
 	def do_POST(self):
 
-		logging.info( "incomming http: ", self.path )
+		logging.info( "incomming http: " + self.path )
 
 		content_length = int(self.headers['Content-Length']) # <--- Gets the size of data
 		post_data = self.rfile.read(content_length) # <--- Gets the data itself
@@ -98,7 +98,7 @@ class HttpServer(SimpleHTTPRequestHandler):
 		global tcp_port
 		# castdevice = next(cc for cc in CHROMECASTS if cc.device.model_name == "Google Home")
 		castdevice = pychromecast.Chromecast(device_name)
-		logging.info("Cast device:", castdevice.device.friendly_name)
+		logging.info("Cast device:" + castdevice.device.friendly_name)
 		castdevice.wait()
 		mediacontroller = castdevice.media_controller # ChromeCast Specific
 		url = "http://" + ip_add + ":" + str(tcp_port) + "/" + mp3
@@ -142,8 +142,8 @@ if device_name=="":         # if did not specify the device name or IP, we are g
 		# So the returned host name will looks like: 'record[a,in-unique,6c898c16-4dc1-6575-e851-3b5d1c994e9e.local.]=120/119,192.168.1.167'
 		# Here I use a trick to retrieve the IP address from above host record
 		device_name=device_name.split(',')[-1]
-logging.info("Default cast device:", device_name)
-logging.info(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, tcp_port))
+logging.info("Default cast device:" + device_name)
+logging.info("%s Server Starts - %s:%s", time.asctime(), HOST_NAME, tcp_port)
 httpServer = HTTPServer((HOST_NAME, tcp_port), HttpServer) #HTTP Server Stuff (Python Librarys)
 
 try:
@@ -152,4 +152,4 @@ except KeyboardInterrupt:
 	pass
 
 httpServer.server_close()
-logging.info(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, tcp_port))
+logging.info("%s Server Stops - %s:%s", time.asctime(), HOST_NAME, tcp_port)
